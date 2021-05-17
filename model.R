@@ -10,6 +10,7 @@ library(tidyverse)
 library(ggdark)
 library(scales)
 library(PerformanceAnalytics)
+library(zoo)
 
 #Visualize 3 Month Treasury Returns 
 getSymbols("DGS3MO", src = "FRED")
@@ -38,35 +39,55 @@ rF <- DGS3MO %>%
   pull
 
 #Get Crypto Market Caps
-cryptoData <- read.csv(file = "data.csv")
+cryptoMktCap <- read.csv(file = "mkt_caps.csv")
 
-getAnnualReturns <- function(symbols) {
-  answer <- c()
-  for (symbol in symbols) {
-    answer[[symbol]] <- getSymbols(gsub(" ", "", paste(symbol, "-usd")), auto.assign = FALSE) %>% 
-      Cl %>% 
-      periodReturn('yearly') %>% 
-      as.tibble %>% 
-      pull %>% 
-      mean
-  }
-   return(answer)
+
+
+#Get Annualized Returns for Cryptocurrencies
+cryptoPricing <- read.csv(file = "pricing_data.csv")
+
+names <- colnames(cryptoPricing)
+
+dates <- as.Date(cryptoPricing[,1], format = "%Y-%m-%d")
+
+cryptoPricing  <- cryptoPricing[,2:length(cryptoPricing),] %>% 
+  xts(order.by = dates)
+
+getReturn <- function(crypto) {
+  crypto %>% 
+    na.omit %>% 
+    CalculateReturns %>% 
+    Return.annualized
 }
 
-getAnnualReturns("btc") %>% tail
+returns <- apply(cryptoPricing, 2, getReturn) 
 
-df <- cryptoData %>% 
-  as.tibble %>% 
-  .[c(2,3,5)] %>% 
-  arrange(market_cap %>% desc) %>% 
-  head(50) 
+#Visualize Top Normalized Returns by Market Cap
+normalize <- function(x) {
+  return(x/first(x))
+}
 
-write.table(df , file = "top50_mktcap.csv")
+cryptoPricing[,1:5] %>% 
+  apply(2, normalize) %>% 
+  as.xts %>% 
+  plot.zoo(
+    plot.type = "single",
+    log="y",
+    col = 1:5,
+    ylab = "Normalized Log Returns",
+    xlab = "Year",
+    main = "Normalized Log Returns for Top 5 Crytpocurrencies by Market Cap"
+    ) 
+legend("topleft", 
+       inset=c(0,0), 
+       y.intersp = 1, 
+       legend = names[1:5], 
+       lty = 1, 
+       bty = "n", 
+       col = 1:5, 
+       cex = 1)
 
 
-portfolio_returns_xts_rebalanced_monthly <- 
-  Return.portfolio(asset_returns_xts, weights = w, rebalance_on = "months") %>%
-  `colnames<-`("returns")
 
 
   
